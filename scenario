@@ -1,0 +1,51 @@
+import os
+import random
+import pandas as pd
+
+# ---------- تنظیمات ----------
+BASE_FILE   = "zdata.csv"         # فایل اصلی 24 h × 5 scenario
+OUTPUT_FILE = "zdata_7d_25s.csv"  # نام فایل خروجی
+NOISE_PCT   = 0.05                # دامنهٔ نویز (±۵٪)
+random.seed(42)                   # برای تکرارپذیری (دلخواه)
+
+# ---------- 1) بارگذاری دادهٔ اصلی ----------
+if not os.path.isfile(BASE_FILE):
+    raise FileNotFoundError(f"'{BASE_FILE}' پیدا نشد!")
+
+base_df = pd.read_csv(BASE_FILE)
+
+# فهرست ستون‌های بار (Node1, Node2, ...)
+node_cols = [c for c in base_df.columns if c.lower().startswith("node")]
+base_df = base_df[["Time", "Scenario"] + node_cols]
+
+# ---------- 2) تولید افق زمانی و سناریوهای جدید ----------
+days         = 7
+hours        = range(1, 25)                # 1 … 24
+T_full       = [f"t{i}" for i in range(1, 168 + 1)]
+scenario_ref = ["s1", "s2", "s3", "s4", "s5"]
+scenario_new = [f"s{i}" for i in range(1, 25)]  # 25 سناریو
+
+records = []
+for s_new in scenario_new:
+    s_base = scenario_ref[(int(s_new[1:]) - 1) % 5]   # نگاشت به s1…s5
+    for d in range(days):
+        for h in hours:
+            t_idx = d * 24 + h                        # t1 … t168
+            # ردیف متناظر از روز اول و سناریوی مرجع
+            r0 = base_df.loc[
+                (base_df["Time"] == f"t{h}") & (base_df["Scenario"] == s_base)
+            ].iloc[0]
+
+            row = {"Time": f"t{t_idx}", "Scenario": s_new}
+            for col in node_cols:
+                noise = 1 + random.uniform(-NOISE_PCT, NOISE_PCT)
+                row[col] = round(r0[col] * noise, 2)
+            records.append(row)
+
+large_df = pd.DataFrame(records)
+print(f"✅ دیتاست جدید ساخته شد: {large_df.shape[0]} ردیف، "
+      f"{large_df.shape[1]} ستون.")
+
+# ---------- 3) ذخیره در فایل CSV ----------
+large_df.to_csv(OUTPUT_FILE, index=False)
+print(f"📄 فایل «{OUTPUT_FILE}» روی دیسک ذخیره شد.")
